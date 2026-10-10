@@ -24,6 +24,7 @@ jobs:
         run: python3 bot.py
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_ALERT_WEBHOOK: ${{ secrets.DISCORD_ALERT_WEBHOOK }}  # необязательный, иначе сбои пишутся в канал кодов
 
       - name: Запомнить отправленные коды
         run: |
