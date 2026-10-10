@@ -27,7 +27,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ALERT_HOOK: ${{ secrets.DISCORD_ALERT_WEBHOOK || secrets.DISCORD_WEBHOOK }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Проверить источники и отправить новые коды
         run: |
