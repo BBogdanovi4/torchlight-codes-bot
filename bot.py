@@ -108,7 +108,7 @@ def save_state(state):
 
 
 def post(webhook, payload):
-    payload["username"] = "Torchlight коды"
+    # Имя и аватарка берутся из настроек вебхука в Discord: "Torchlight коды" для кодов, "Сторож" для сбоев.
     if not webhook:
         print("[вхолостую]", json.dumps(payload, ensure_ascii=False))
         return
