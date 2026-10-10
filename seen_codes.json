@@ -30,6 +30,7 @@
     "tlinfinite2026",
     "TLMOON0417",
     "TLNEWLOOK",
+    "TLNIGHT",
     "TLSS61025",
     "TLTARTARUS",
     "TLXTL1011",
@@ -61,5 +62,9 @@
     }
   },
   "heartbeat": "2026-10",
-  "status_message_id": "1558539568582758475"
+  "status_message_id": "1558539568582758475",
+  "last_new": {
+    "code": "TLNIGHT",
+    "at": 1791655562
+  }
 }
