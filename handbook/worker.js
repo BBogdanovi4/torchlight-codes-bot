@@ -5,6 +5,7 @@
 
 const INDEX_URL = "https://raw.githubusercontent.com/BBogdanovi4/torchlight-codes-bot/main/handbook/index.json";
 const TLIDB = "https://tlidb.com";
+const DISPATCH_URL = "https://api.github.com/repos/BBogdanovi4/torchlight-codes-bot/actions/workflows/check-codes.yml/dispatches";
 const COLORS = { ItemGold: 0xe6a23c, Pactspirit: 0x9b59b6, skill: 0x3498db, item: 0x95a5a6 };
 
 let indexCache = { at: 0, data: null };
@@ -152,5 +153,20 @@ export default {
     }
 
     return new Response("Unknown interaction", { status: 400 });
+  },
+
+  // Запасной будильник для бота кодов: GitHub иногда пропускает запуски по расписанию.
+  // Cloudflare > Worker > Settings > Triggers > Cron: "37 * * * *". Нужен секрет GITHUB_TOKEN
+  // (fine-grained токен только на этот репозиторий, право Actions: Read and write).
+  async scheduled(event, env, ctx) {
+    if (!env.GITHUB_TOKEN) return;
+    ctx.waitUntil(fetch(DISPATCH_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "tli-spravochnik",
+      },
+      body: JSON.stringify({ ref: "main" }),
+    }).then(r => { if (!r.ok) console.log("Запуск бота кодов не удался:", r.status); }));
   },
 };

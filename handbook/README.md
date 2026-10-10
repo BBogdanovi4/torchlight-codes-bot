@@ -20,3 +20,10 @@
 6. **GitHub:** Actions > «Справочник: обновить список» > Run workflow с галочкой «Зарегистрировать команды».
 
 После этого в Discord появятся `/skill` и `/item`.
+
+## Запасной будильник для бота кодов (по желанию)
+
+GitHub иногда пропускает запуски по расписанию. Воркер умеет сам раз в час запускать проверку кодов:
+1. GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token: доступ только к репозиторию `torchlight-codes-bot`, право **Actions: Read and write**.
+2. Cloudflare, воркер > Settings > Variables: секрет `GITHUB_TOKEN` с этим токеном.
+3. Cloudflare, воркер > Settings > Triggers > Cron Triggers: `37 * * * *`.
