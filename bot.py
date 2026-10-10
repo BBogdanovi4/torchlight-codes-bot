@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seen_codes.json")
@@ -85,10 +86,10 @@ def collect():
                 found.setdefault(c["code"].lower(), c)
             problem = "отдаёт пустой список (похоже, сайт поменял вёрстку)" if empty_is_bad and not codes else ""
         except Exception as e:
-            problem = f"не отвечает ({type(e).__name__}: {e})"
+            codes, problem = [], f"не отвечает ({type(e).__name__}: {e})"
         if problem:
             print(f"Источник {name}: {problem}")
-        results.append((name, problem))
+        results.append((name, problem, len(codes)))
     return found, results
 
 
@@ -107,15 +108,49 @@ def save_state(state):
         f.write("\n")
 
 
+def send(url, payload, method="POST"):
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method=method,
+                                 headers={"Content-Type": "application/json", "User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        body = r.read()
+    time.sleep(1)  # у вебхуков Discord лимит около 5 сообщений за 2 секунды
+    return json.loads(body) if body else None
+
+
 def post(webhook, payload):
     # Имя и аватарка берутся из настроек вебхука в Discord: "Torchlight коды" для кодов, "Сторож" для сбоев.
     if not webhook:
         print("[вхолостую]", json.dumps(payload, ensure_ascii=False))
         return
-    req = urllib.request.Request(webhook, data=json.dumps(payload).encode("utf-8"),
-                                 headers={"Content-Type": "application/json", "User-Agent": UA})
-    urllib.request.urlopen(req, timeout=20).read()
-    time.sleep(1)  # у вебхуков Discord лимит около 5 сообщений за 2 секунды
+    send(webhook, payload)
+
+
+def update_status(state, webhook, results, crash):
+    """Одно сообщение в канале статуса, которое бот правит при каждой проверке, а не пишет заново."""
+    now = int(time.time())
+    lines = [f"Последняя проверка: <t:{now}:R> (<t:{now}:t>)"]
+    if crash:
+        lines.append(f"❌ Бот {crash}")
+    else:
+        lines.append(" · ".join(f"{name} {'⚠️' if problem else '✅'} {count}" for name, problem, count in results))
+    last = state.get("last_new")
+    lines.append(f"Последний новый код: {last['code']}, <t:{last['at']}:R>" if last else "Последний новый код: пока не было")
+    ok = not crash and not any(h.get("alerted") for h in state.get("health", {}).values())
+    payload = {"embeds": [{
+        "title": "🟢 Бот кодов работает" if ok else "🟡 Бот кодов работает с проблемами",
+        "description": "\n".join(lines),
+        "color": 0x2ECC71 if ok else 0xF1C40F,
+        "footer": {"text": "Обновляется при каждой проверке, примерно раз в час. Если время давнее, бот не запускается."},
+    }]}
+    msg_id = state.get("status_message_id")
+    if msg_id:
+        try:
+            send(f"{webhook}/messages/{msg_id}", payload, "PATCH")
+            return
+        except urllib.error.HTTPError as e:
+            if e.code != 404:  # 404: сообщение удалили вручную, ниже создадим новое
+                raise
+    state["status_message_id"] = send(webhook + "?wait=true", payload)["id"]
 
 
 def code_message(c):
@@ -163,6 +198,7 @@ def check_codes(state, webhook):
         post(webhook, code_message(c))
         if webhook:  # вхолостую ничего не запоминаем, чтобы настоящий запуск всё равно отправил
             state["codes"].append(c["code"])
+            state["last_new"] = {"code": c["code"], "at": int(time.time())}
             save_state(state)
     print(f"Источники проверены, всего кодов: {len(found)}, новых: {len(new)}")
     return found, results
@@ -184,16 +220,22 @@ def main():
     try:
         found, results = check_codes(state, webhook)
     except Exception as e:
-        crash = f"упал с ошибкой {type(e).__name__}: {e}"
+        found, results, crash = {}, [], f"упал с ошибкой {type(e).__name__}: {e}"
         print("Бот", crash)
 
     if not crash:
         update_health(state, alert_webhook, "проверка источников",
                       "" if found else "все источники пустые или не отвечают")
         if found:  # пока лежит всё сразу, хватит одного общего сообщения вместо отдельного про каждый сайт
-            for name, problem in results:
+            for name, problem, _ in results:
                 update_health(state, alert_webhook, f"источник {name}", problem)
     update_health(state, alert_webhook, "сам бот", crash, threshold=1)
+
+    if alert_webhook:
+        try:
+            update_status(state, alert_webhook, results, crash)
+        except Exception as e:  # табличка статуса не должна ронять проверку кодов
+            print("Не обновилось сообщение статуса:", e)
 
     # Раз в месяц меняем файл, чтобы в репозитории был коммит: в публичных репозиториях
     # GitHub выключает расписание после 60 дней без активности.
