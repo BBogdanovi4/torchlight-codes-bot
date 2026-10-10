@@ -60,5 +60,6 @@
       "bad_runs": 0,
       "alerted": false
     }
-  }
+  },
+  "heartbeat": "2026-10"
 }
