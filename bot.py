@@ -197,12 +197,13 @@ def check_codes(state, webhook):
     new = [c for key, c in found.items() if key not in seen]
     for c in new:
         post(webhook, code_message(c))
-        # Код отдельным сообщением без лишнего текста, чтобы на телефоне копировался целиком.
-        post(webhook, {"content": c["code"], "allowed_mentions": {"parse": []}})
         if webhook:  # вхолостую ничего не запоминаем, чтобы настоящий запуск всё равно отправил
+            # Запоминаем сразу после пинга: если дальше что-то упадёт, @everyone не повторится.
             state["codes"].append(c["code"])
             state["last_new"] = {"code": c["code"], "at": int(time.time())}
             save_state(state)
+        # Код отдельным сообщением без лишнего текста, чтобы на телефоне копировался целиком.
+        post(webhook, {"content": c["code"], "allowed_mentions": {"parse": []}})
     print(f"Источники проверены, всего кодов: {len(found)}, новых: {len(new)}")
     return found, results
 
