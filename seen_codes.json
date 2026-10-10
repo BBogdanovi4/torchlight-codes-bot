@@ -38,5 +38,27 @@
     "U7VHJOQAIRY",
     "Z1HLW3CX6YTJ",
     "Z54S8MRPJQVH"
-  ]
+  ],
+  "health": {
+    "проверка источников": {
+      "bad_runs": 0,
+      "alerted": false
+    },
+    "источник TLI Compendium": {
+      "bad_runs": 0,
+      "alerted": false
+    },
+    "источник PocketGamer": {
+      "bad_runs": 0,
+      "alerted": false
+    },
+    "источник Steam": {
+      "bad_runs": 0,
+      "alerted": false
+    },
+    "сам бот": {
+      "bad_runs": 0,
+      "alerted": false
+    }
+  }
 }
