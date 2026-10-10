@@ -195,6 +195,10 @@ def main():
                 update_health(state, alert_webhook, f"источник {name}", problem)
     update_health(state, alert_webhook, "сам бот", crash, threshold=1)
 
+    # Раз в месяц меняем файл, чтобы в репозитории был коммит: в публичных репозиториях
+    # GitHub выключает расписание после 60 дней без активности.
+    state["heartbeat"] = time.strftime("%Y-%m", time.gmtime())
+
     if webhook:  # вхолостую состояние не сохраняем
         save_state(state)
 
