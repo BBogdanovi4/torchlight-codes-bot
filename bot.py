@@ -157,7 +157,8 @@ def code_message(c):
     lines = [f"Награда: {c['reward']}"] if c["reward"] else []
     lines.append(HOW_TO)
     return {
-        "content": c["code"],  # отдельной строкой, чтобы удобно копировать с телефона
+        "content": "@everyone",
+        "allowed_mentions": {"parse": ["everyone"]},
         "embeds": [{
             "title": "Новый код Torchlight: Infinite",
             "description": "\n".join(lines),
@@ -196,6 +197,8 @@ def check_codes(state, webhook):
     new = [c for key, c in found.items() if key not in seen]
     for c in new:
         post(webhook, code_message(c))
+        # Код отдельным сообщением без лишнего текста, чтобы на телефоне копировался целиком.
+        post(webhook, {"content": c["code"], "allowed_mentions": {"parse": []}})
         if webhook:  # вхолостую ничего не запоминаем, чтобы настоящий запуск всё равно отправил
             state["codes"].append(c["code"])
             state["last_new"] = {"code": c["code"], "at": int(time.time())}
