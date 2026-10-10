@@ -1,0 +1,36 @@
+name: Проверка кодов Torchlight
+
+on:
+  schedule:
+    - cron: "17 * * * *"  # раз в час, в 17 минут (в начале часа GitHub перегружен)
+  workflow_dispatch:  # кнопка "Run workflow" для ручного запуска
+  push:
+    branches: [main]
+    paths: [bot.py, .github/workflows/check-codes.yml]
+
+permissions:
+  contents: write  # чтобы сохранять seen_codes.json обратно в репозиторий
+
+concurrency: check-codes
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить источники и отправить новые коды
+        run: python3 bot.py
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Запомнить отправленные коды
+        run: |
+          if ! git diff --quiet seen_codes.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add seen_codes.json
+            git commit -m "Новые коды"
+            git push
+          fi
