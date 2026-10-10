@@ -28,6 +28,8 @@ def fetch(url):
 
 def from_compendium():
     data = json.loads(fetch("https://api.tlicompendium.com/api/giftcodes"))
+    if not isinstance(data, list) or (data and "isActive" not in data[0]):
+        raise RuntimeError("API поменял формат ответа")  # иначе фильтр ниже молча вернёт пустой список
     return [{"code": c["code"].strip(), "reward": c.get("rewardDescription") or "",
              "source": "TLI Compendium", "url": "https://tlicompendium.com/en"}
             for c in data if c.get("isActive")]
@@ -65,23 +67,29 @@ def from_steam():
     return out
 
 
-SOURCES = [from_compendium, from_pocketgamer, from_steam]
+# (имя, функция, пустой ответ считается поломкой)
+SOURCES = [
+    ("TLI Compendium", from_compendium, False),  # активных кодов там иногда честно ноль
+    ("PocketGamer", from_pocketgamer, True),     # список на странице никогда не бывает пустым
+    ("Steam", from_steam, False),                # коды в новостях Steam редкость
+]
+BAD_RUNS_BEFORE_ALERT = 3  # разовый сбой сайта не повод писать в Discord
 
 
 def collect():
-    found, errors = {}, []
-    for source in SOURCES:
+    found, results = {}, []
+    for name, source, empty_is_bad in SOURCES:
         try:
-            for c in source():
-                if CODE_RE.match(c["code"]):
-                    found.setdefault(c["code"].lower(), c)
+            codes = [c for c in source() if CODE_RE.match(c["code"])]
+            for c in codes:
+                found.setdefault(c["code"].lower(), c)
+            problem = "отдаёт пустой список (похоже, сайт поменял вёрстку)" if empty_is_bad and not codes else ""
         except Exception as e:
-            errors.append(f"{source.__name__}: {e}")
-    for e in errors:
-        print("Ошибка источника", e)
-    if len(errors) == len(SOURCES):
-        sys.exit("Ни один источник не ответил")
-    return found
+            problem = f"не отвечает ({type(e).__name__}: {e})"
+        if problem:
+            print(f"Источник {name}: {problem}")
+        results.append((name, problem))
+    return found, results
 
 
 def load_state():
@@ -125,17 +133,24 @@ def code_message(c):
     }
 
 
-def main():
-    webhook = os.environ.get("DISCORD_WEBHOOK", "").strip()
-    state = load_state()
-    found = collect()
-    seen = {c.lower() for c in state["codes"]}
+def update_health(state, webhook, check, problem, threshold=BAD_RUNS_BEFORE_ALERT):
+    """Пишет в Discord только при смене статуса: один раз когда сломалось, один раз когда починилось."""
+    h = state.setdefault("health", {}).setdefault(check, {"bad_runs": 0, "alerted": False})
+    if problem:
+        h["bad_runs"] = min(h["bad_runs"] + 1, threshold)  # дальше не растёт, чтобы не коммитить каждый час
+        if h["bad_runs"] >= threshold and not h["alerted"]:
+            runs = f" уже {threshold} проверки подряд" if threshold > 1 else ""
+            post(webhook, {"content": f"⚠️ Бот кодов, {check}: {problem}{runs}. Новые коды могут не прийти."})
+            h["alerted"] = True
+    else:
+        if h["alerted"]:
+            post(webhook, {"content": f"✅ Бот кодов, {check}: снова работает."})
+        h["bad_runs"], h["alerted"] = 0, False
 
-    if "--seed" in sys.argv:
-        state["codes"] += [c["code"] for c in found.values()]
-        save_state(state)
-        print("Запомнил как старые:", ", ".join(c["code"] for c in found.values()))
-        return
+
+def check_codes(state, webhook):
+    found, results = collect()
+    seen = {c.lower() for c in state["codes"]}
 
     if not state.get("announced") and webhook:
         post(webhook, {"content": "Бот подключён. Буду писать сюда новые коды Torchlight: Infinite, "
@@ -150,6 +165,38 @@ def main():
             state["codes"].append(c["code"])
             save_state(state)
     print(f"Источники проверены, всего кодов: {len(found)}, новых: {len(new)}")
+    return found, results
+
+
+def main():
+    webhook = os.environ.get("DISCORD_WEBHOOK", "").strip()
+    alert_webhook = os.environ.get("DISCORD_ALERT_WEBHOOK", "").strip() or webhook
+    state = load_state()
+
+    if "--seed" in sys.argv:
+        found, _ = collect()
+        state["codes"] += [c["code"] for c in found.values()]
+        save_state(state)
+        print("Запомнил как старые:", ", ".join(c["code"] for c in found.values()))
+        return
+
+    crash = ""
+    try:
+        found, results = check_codes(state, webhook)
+    except Exception as e:
+        crash = f"упал с ошибкой {type(e).__name__}: {e}"
+        print("Бот", crash)
+
+    if not crash:
+        update_health(state, alert_webhook, "проверка источников",
+                      "" if found else "все источники пустые или не отвечают")
+        if found:  # пока лежит всё сразу, хватит одного общего сообщения вместо отдельного про каждый сайт
+            for name, problem in results:
+                update_health(state, alert_webhook, f"источник {name}", problem)
+    update_health(state, alert_webhook, "сам бот", crash, threshold=1)
+
+    if webhook:  # вхолостую состояние не сохраняем
+        save_state(state)
 
 
 if __name__ == "__main__":
