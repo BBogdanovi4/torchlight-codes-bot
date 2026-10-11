@@ -43,8 +43,9 @@ jobs:
       - name: Новые видео на YouTube
         if: always()  # видео не зависят от кодов
         run: python3 videos.py
-        env:
-          DISCORD_VIDEOS_WEBHOOK: ${{ secrets.DISCORD_VIDEOS_WEBHOOK }}
+        env:  # у каждого YouTube-канала свой Discord-канал
+          DISCORD_VIDEOS_EXMAGISTR: ${{ secrets.DISCORD_VIDEOS_EXMAGISTR }}
+          DISCORD_VIDEOS_DONTHECROWN: ${{ secrets.DISCORD_VIDEOS_DONTHECROWN }}
 
       - name: Запомнить отправленные коды и видео
         if: always()  # даже если бот упал после отправки, иначе код придёт с @everyone повторно
