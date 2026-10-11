@@ -14,7 +14,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: [bot.py, .github/workflows/check-codes.yml]
+    paths: [bot.py, videos.py, .github/workflows/check-codes.yml]
 
 permissions:
   contents: write  # чтобы сохранять seen_codes.json обратно в репозиторий
@@ -40,13 +40,20 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           DISCORD_ALERT_WEBHOOK: ${{ secrets.DISCORD_ALERT_WEBHOOK }}  # необязательный, иначе сбои пишутся в канал кодов
 
-      - name: Запомнить отправленные коды
+      - name: Новые видео на YouTube
+        if: always()  # видео не зависят от кодов
+        run: python3 videos.py
+        env:
+          DISCORD_VIDEOS_WEBHOOK: ${{ secrets.DISCORD_VIDEOS_WEBHOOK }}
+
+      - name: Запомнить отправленные коды и видео
         if: always()  # даже если бот упал после отправки, иначе код придёт с @everyone повторно
         run: |
-          if ! git diff --quiet seen_codes.json; then
+          if [ -n "$(git status --porcelain seen_codes.json videos_state.json)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add seen_codes.json
+            [ -f videos_state.json ] && git add videos_state.json
             git commit -m "Состояние бота"
             # Если в это время кто-то залил файлы через сайт, подтягиваем их и пробуем ещё раз.
             for i in 1 2 3; do
