@@ -239,10 +239,21 @@ def rub(p):
     return f"{round(p):,}".replace(",", " ") + " ₽"
 
 
+def usd(lot):
+    v = (lot.get("prices") or {}).get("usd")
+    return f"${v:,.2f}".replace(",", " ") if v else ""
+
+
+def price(lot):  # «16 622 ₽ · $200.85»
+    return f"**{rub(lot['price'])}**" + (f" · {usd(lot)}" if usd(lot) else "")
+
+
 def change(old, new):
-    diff = new - old
-    pct = f" ({diff / old * 100:+.0f}%)" if old else ""
-    return f"{rub(old)} → **{rub(new)}**{pct}"
+    pct = f" ({(new['price'] - old['price']) / old['price'] * 100:+.0f}%)" if old["price"] else ""
+    line = f"{rub(old['price'])} → **{rub(new['price'])}**{pct}"
+    if usd(old) and usd(new):
+        line += f"\n{usd(old)} → **{usd(new)}**"
+    return line
 
 
 def price_changed(a, b):
@@ -270,10 +281,10 @@ def board(info, uid, image=False):
     for n, l in enumerate(lots[:20], 1):
         if image:
             short = re.sub(r"\s+", " ", EMOJI.sub(" ", l["title"])).replace("[", "(").replace("]", ")").strip()[:60]
-            lines.append(f"{n}. [{short}]({l['url']}) · **{rub(l['price'])}**")
+            lines.append(f"{n}. [{short}]({l['url']}) · {price(l)}")
             continue
         abi = abi_line(l)
-        lines.append(f"• [{l['title'][:90]}]({l['url']})\n  {l['category']} · **{rub(l['price'])}**"
+        lines.append(f"• [{l['title'][:90]}]({l['url']})\n  {l['category']} · {price(l)}"
                      + (f"\n  {abi}" if abi else ""))
     if len(lots) > 20:
         lines.append(f"…и ещё {len(lots) - 20}")
@@ -344,6 +355,7 @@ def board_image(info, max_lots=8):
         import io
         f_head, f_sub, f_title = _font(36, True), _font(21), _font(23, True)
         f_cat, f_chip, f_price, f_foot = _font(19), _font(19, True), _font(31, True), _font(17)
+        f_usd = _font(22, True)
     except Exception as e:
         print("FunPay: картинку не рисую,", e)
         return None
@@ -352,8 +364,8 @@ def board_image(info, max_lots=8):
     lots = sorted(info["lots"].values(), key=lambda l: -l["price"])
     cards = []  # заранее считаем высоту каждой карточки
     for l in lots[:max_lots]:
-        price = rub(l["price"])
-        pw = probe.textlength(price, font=f_price)
+        price, dollars = rub(l["price"]), usd(l)
+        pw = max(probe.textlength(price, font=f_price), probe.textlength(dollars, font=f_usd) if dollars else 0)
         title = re.sub(r"\s+([,.])", r"\1", re.sub(r"\s+", " ", EMOJI.sub(" ", l["title"]))).strip(" ,")
         tl = _wrap(probe, title, f_title, W - 2 * P - 3 * PAD - pw, 3)
         a, chips = abi_info(l), []
@@ -378,9 +390,9 @@ def board_image(info, max_lots=8):
             x += cw + 10
         rows = [r for r in rows if r]
         h = PAD + len(tl) * 30 + 6 + 24 + (14 + len(rows) * 42 - 8 if rows else 0) + PAD
-        cards.append((l, price, pw, tl, rows, h))
+        cards.append((l, price, dollars, pw, tl, rows, max(h, PAD + 36 + 30 + PAD)))
     head_h = 120
-    body_h = sum(c[5] + 14 for c in cards) or 90
+    body_h = sum(c[-1] + 14 for c in cards) or 90
     more = len(lots) - len(cards)
     H = head_h + body_h + (34 if more > 0 else 0) + 50
     img = Image.new("RGB", (W, H), BG)
@@ -404,10 +416,12 @@ def board_image(info, max_lots=8):
     if not cards:
         d.rounded_rectangle((P, y, W - P, y + 76), 14, fill=CARD)
         d.text((P + PAD, y + 24), "Сейчас ничего не выставлено", font=f_title, fill=MUTED)
-    for l, price, pw, tl, rows, h in cards:
+    for l, price, dollars, pw, tl, rows, h in cards:
         d.rounded_rectangle((P, y, W - P, y + h), 14, fill=CARD)
         d.rectangle((P, y + 10, P + 4, y + h - 10), fill=C_GREEN)
-        d.text((W - P - PAD - pw, y + PAD - 2), price, font=f_price, fill=C_GREEN)
+        d.text((W - P - PAD - d.textlength(price, font=f_price), y + PAD - 2), price, font=f_price, fill=C_GREEN)
+        if dollars:
+            d.text((W - P - PAD - d.textlength(dollars, font=f_usd), y + PAD + 38), dollars, font=f_usd, fill=MUTED)
         ty = y + PAD
         for line in tl:
             d.text((P + PAD + 6, ty), line, font=f_title, fill=FG)
@@ -479,21 +493,21 @@ def check(uid, saved, webhook):
         for lid, lot in info["lots"].items():
             if lid in old:
                 if price_changed(old[lid], lot):
-                    events.append(lot_embed("💲 Цена изменилась", YELLOW, lot, change(old[lid]["price"], lot["price"]), seller))
+                    events.append(lot_embed("💲 Цена изменилась", YELLOW, lot, change(old[lid], lot), seller))
                 continue
             back = next((g for g, v in gone.items() if same_lot(v, lot)), None)
             if back:
                 was = gone.pop(back)
                 if price_changed(was, lot):
-                    events.append(lot_embed("🔁 Лот вернулся с другой ценой", BLUE, lot, change(was["price"], lot["price"]), seller))
+                    events.append(lot_embed("🔁 Лот вернулся с другой ценой", BLUE, lot, change(was, lot), seller))
                 else:
-                    events.append(lot_embed("🔁 Лот выставлен заново", BLUE, lot, f"Цена та же: **{rub(lot['price'])}**", seller))
+                    events.append(lot_embed("🔁 Лот выставлен заново", BLUE, lot, f"Цена та же: {price(lot)}", seller))
             else:
-                events.append(lot_embed("🆕 Новый лот", GREEN, lot, f"Цена: **{rub(lot['price'])}**", seller))
+                events.append(lot_embed("🆕 Новый лот", GREEN, lot, f"Цена: {price(lot)}", seller))
         for lid, lot in old.items():
             if lid in info["lots"]:
                 continue
-            line = f"Стоил: **{rub(lot['price'])}**"
+            line = f"Стоил: {price(lot)}"
             if new_reviews > 0 and info["reviews"]:  # одновременно пришёл отзыв: похоже на продажу
                 line += "\nВ это же время появился новый отзыв, похоже, продан:\n> " + info["reviews"][0][:200]
             events.append(lot_embed("❌ Лот снят или продан", RED, lot, line, seller))
