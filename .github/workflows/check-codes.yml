@@ -49,7 +49,11 @@ jobs:
 
       - name: Лоты продавцов на FunPay
         if: always()  # FunPay не зависит от кодов
-        run: python3 funpay.py
+        run: |
+          # Pillow и шрифт с кириллицей рисуют картинку витрины. Не поставились: витрина придёт текстом.
+          python3 -m pip install -q --break-system-packages pillow || true
+          [ -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ] || sudo apt-get install -y -q fonts-dejavu-core || true
+          python3 funpay.py
         env:
           DISCORD_FUNPAY: ${{ secrets.DISCORD_FUNPAY }}
 
