@@ -14,7 +14,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: [bot.py, videos.py, .github/workflows/check-codes.yml]
+    paths: [bot.py, videos.py, funpay.py, .github/workflows/check-codes.yml]
 
 permissions:
   contents: write  # чтобы сохранять seen_codes.json обратно в репозиторий
@@ -47,14 +47,21 @@ jobs:
           DISCORD_VIDEOS_EXMAGISTR: ${{ secrets.DISCORD_VIDEOS_EXMAGISTR }}
           DISCORD_VIDEOS_DONTHECROWN: ${{ secrets.DISCORD_VIDEOS_DONTHECROWN }}
 
-      - name: Запомнить отправленные коды и видео
+      - name: Лоты продавцов на FunPay
+        if: always()  # FunPay не зависит от кодов
+        run: python3 funpay.py
+        env:
+          DISCORD_FUNPAY: ${{ secrets.DISCORD_FUNPAY }}
+
+      - name: Запомнить отправленные коды, видео и лоты
         if: always()  # даже если бот упал после отправки, иначе код придёт с @everyone повторно
         run: |
-          if [ -n "$(git status --porcelain seen_codes.json videos_state.json)" ]; then
+          if [ -n "$(git status --porcelain seen_codes.json videos_state.json funpay_state.json)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add seen_codes.json
             [ -f videos_state.json ] && git add videos_state.json
+            [ -f funpay_state.json ] && git add funpay_state.json
             git commit -m "Состояние бота"
             # Если в это время кто-то залил файлы через сайт, подтягиваем их и пробуем ещё раз.
             for i in 1 2 3; do
