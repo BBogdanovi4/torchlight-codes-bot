@@ -25,6 +25,7 @@
     "SUMMERCROW1",
     "TalkLightSS7",
     "TL0718T",
+    "TL14FOLLOWME",
     "TL3YEARS",
     "TLCHILLGO",
     "tlinfinite2026",
@@ -63,8 +64,8 @@
   },
   "status_message_id": "1558539568582758475",
   "last_new": {
-    "code": "TLNIGHT",
-    "at": 1791655720
+    "code": "TL14FOLLOWME",
+    "at": 1792126355
   },
   "heartbeat": "2026-10"
 }
