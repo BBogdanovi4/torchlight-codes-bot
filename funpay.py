@@ -561,21 +561,20 @@ def _strip(d, F, x0, x1, y, st):
             y - 40), mid, font=F["label"], fill=FG)
 
 
-def market_image(stats):
-    """Картинка отчёта по рынку: по карточке на каждый лот продавца."""
+def market_image(st):
+    """Картинка рынка для одного лота. По одной на лот: длинную общую Discord ужимает до нечитаемой."""
     F = _fonts()
     if not F:
         return None
     SEC = 494
-    H = 120 + len(stats) * (SEC + 14) + 50
+    H = P + SEC + 50
     img, d = _new(H)
-    y = _header(img, d, F, "Рынок Arena Breakout (PC)", None,
-                f"Средняя цена за кк у соседей по складу ±{SEGMENT_KK}кк")
+    y = P
     inner0, inner1 = P + PAD + 6, W - P - PAD
-    for st in stats:
+    if True:
         d.rounded_rectangle((P, y, W - P, y + SEC), 14, fill=CARD)
         d.rectangle((P, y + 10, P + 4, y + SEC - 10), fill=C_BLUE)
-        d.text((inner0, y + PAD - 2), f"Лот {kk(st['s'])} за {usd(st['lot'])}", font=F["section"], fill=FG)
+        d.text((inner0, y + PAD - 2), f"Рынок рядом с лотом {kk(st['s'])} за {usd(st['lot'])}", font=F["section"], fill=FG)
         d.text((inner0, y + PAD + 34), f"{rub(st['lot']['price'])}  ·  ${st['ppk']:.3f} за кк", font=F["line"], fill=MUTED)
         # три плитки: средняя, справедливая цена, где он относительно рынка
         ty, tw, th = y + PAD + 74, (inner1 - inner0 - 24) / 3, 92
@@ -601,8 +600,7 @@ def market_image(stats):
         for k, r in enumerate(st["cheapest"]):
             d.text((inner0, sy + 84 + k * 27), f"{k + 1}.  {kk(r['stash'])} за ${r['usd']:.0f}   ·   ${r['ppk']:.3f} за кк",
                    font=F["line"], fill=FG)
-        y += SEC + 14
-    _footer(d, F, H, "цены объявлений, а не продаж, без «без почты»")
+    _footer(d, F, H, f"Arena Breakout (PC), соседи ±{SEGMENT_KK}кк, без «без почты»")
     return _png(img)
 
 
@@ -714,12 +712,15 @@ def market_report(sellers):
     footer = {"text": "Цены объявлений, а не продаж. Без лотов «без почты». Раз в 12 часов"}
     notes = [f"Лот {kk(abi_info(l)['stash'])}: соседей по складу ±{SEGMENT_KK}кк меньше трёх, считать нечего."
              for l in few]
-    png = market_image(stats) if stats else None
-    if png:
-        embed = {"title": "📊 Рынок рядом с лотами", "color": BLUE, "footer": footer,
-                 "description": "\n\n".join([market_text(st, short=True) for st in stats] + notes),
-                 "image": {"url": "attachment://market.png"}}
-        return {"username": "Рынок FunPay", "embeds": [embed]}, {"market.png": png}
+    pngs = [market_image(st) for st in stats]
+    if stats and all(pngs):  # по карточке с картинкой на каждый лот
+        embeds = [{"title": f"📊 Рынок рядом с лотом {kk(st['s'])}", "url": st["lot"]["url"], "color": BLUE,
+                   "description": market_text(st, short=True), "image": {"url": f"attachment://market_{i}.png"}}
+                  for i, st in enumerate(stats)]
+        embeds[-1]["footer"] = footer
+        if notes:
+            embeds.append({"title": "📊 Рынок", "color": BLUE, "description": "\n".join(notes)})
+        return {"username": "Рынок FunPay", "embeds": embeds}, {f"market_{i}.png": png for i, png in enumerate(pngs)}
     embeds = [{"title": f"📊 Рынок рядом с лотом {kk(st['s'])}", "url": st["lot"]["url"], "color": BLUE,
                "description": market_text(st), "footer": footer} for st in stats]
     if notes:
@@ -831,13 +832,13 @@ def main():
         if webhook:  # без вебхука ничего не запоминаем, чтобы настоящий запуск начал с чистого листа
             sellers[uid] = result
     due = time.time() - state.get("market_at", 0) >= MARKET_EVERY - 1800  # запуски GitHub плавают
-    if webhook and (due or state.get("market_style") != "image"):  # первый отчёт с картинкой шлём сразу
+    if webhook and (due or state.get("market_style") != "image2"):  # первый отчёт в новом виде шлём сразу
         try:
             report = market_report(sellers)
             if report:
                 send(webhook, report[0], files=report[1])
             state["market_at"] = int(time.time())
-            state["market_style"] = "image"
+            state["market_style"] = "image2"
             print("FunPay: отчёт по рынку", "с картинкой" if report and report[1] else "текстом")
         except Exception as e:
             print("FunPay: рынок не посчитал,", e)
