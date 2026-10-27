@@ -274,6 +274,26 @@ def lot_embed(title, color, lot, line, seller):
             "footer": {"text": f"FunPay · {seller}"}}
 
 
+def clean(s):  # описание без эмодзи и лишних пробелов
+    return re.sub(r"\s+([,.])", r"\1", re.sub(r"\s+", " ", EMOJI.sub(" ", s))).strip(" ,")
+
+
+def desc_embed(old, new, seller):
+    """Продавец поменял описание лота (цена отдельно). Для Arena Breakout сразу видно, как изменились склад и нал."""
+    lines = []
+    a, b = abi_info(old), abi_info(new)
+    if a and b:
+        for key, name in (("stash", "Склад"), ("cash", "Нал")):
+            if abs(a[key] - b[key]) > 1e-6:
+                lines.append(f"{name}: {kk(a[key])} → **{kk(b[key])}**")
+        if a["ppk"] and b["ppk"] and abs(a["ppk"] - b["ppk"]) > 0.0005:
+            lines.append(f"$ за кк: ${a['ppk']:.3f} → **${b['ppk']:.3f}**")
+    lines.append(f"\nБыло: {clean(old['title'])[:300]}\nСтало: **{clean(new['title'])[:300]}**")
+    return {"title": "📝 Описание изменилось", "color": GREY, "url": new["url"],
+            "description": f"{new['category']} · {price(new)}\n\n" + "\n".join(lines),
+            "footer": {"text": f"FunPay · {seller}"}}
+
+
 def board(info, uid, image=False):
     """Табличка «Витрина». С картинкой в тексте остаются только ссылки на лоты, остальное на картинке."""
     lots = sorted(info["lots"].values(), key=lambda l: -l["price"])
@@ -475,6 +495,77 @@ def send(webhook, payload, message_id=None, files=None):
     return msg.get("id", message_id)
 
 
+# --- Рынок: средняя цена за кк у соседей по складу (раз в 12 часов) ---
+MARKET_URL = "https://funpay.com/lots/1650/"  # Аккаунты Arena Breakout, все лоты отдаются одной страницей
+MARKET_EVERY = 12 * 3600
+SEGMENT_KK = 100  # соседи: склад ±100кк от лота продавца
+
+
+def market_lots():
+    """PC-лоты Arena Breakout со складом: цена в $ и $ за кк, как в «ABI Прайсер»."""
+    page = fetch(MARKET_URL, "usd")
+    rows = []
+    for m in re.finditer(r'<a href="(https://funpay\.com/lots/offer\?id=\d+)" class="tc-item[^"]*"([^>]*)>(.*?)</a>', page, re.S):
+        url, attrs, block = m.groups()
+        platform = re.search(r'data-f-platform="([^"]*)"', attrs)
+        desc = re.search(r'<div class="tc-desc-text">(.*?)</div>', block, re.S)
+        cost = re.search(r'class="tc-price" data-s="([\d.]+)"', block)
+        if not (platform and "(pc)" in platform.group(1) and desc and cost):
+            continue
+        desc = text(desc.group(1))
+        stash = stash_cash(desc[:2000])[0]
+        if stash <= 0 or float(cost.group(1)) <= 0:
+            continue
+        seller = re.search(r"/users/(\d+)/", block)
+        rows.append({"url": url, "seller": seller.group(1) if seller else "", "stash": stash,
+                     "usd": float(cost.group(1)), "ppk": float(cost.group(1)) / stash, "mail": mail_status(desc)})
+    if len(rows) < 20:
+        raise RuntimeError(f"на странице рынка всего {len(rows)} лотов, похоже FunPay её поменял")
+    return rows
+
+
+def market_embed(lot, uid, rows):
+    import statistics
+    a = abi_info(lot)
+    s, ppk = a["stash"], a["ppk"]
+    # Соседи по складу, без лотов самого продавца и без «без почты» (как галочка по умолчанию в «ABI Прайсер»)
+    seg = [r for r in rows if r["seller"] != uid and r["mail"] != "без" and abs(r["stash"] - s) <= SEGMENT_KK]
+    head = f"**{kk(s)} за {usd(lot)}** · ${ppk:.3f} за кк"
+    if len(seg) < 3:
+        return {"title": f"📊 Рынок рядом с лотом {kk(s)}", "url": lot["url"], "color": BLUE,
+                "description": head + f"\n\nСоседей по складу ±{SEGMENT_KK}кк слишком мало ({len(seg)}), считать нечего."}
+    ppks = sorted(r["ppk"] for r in seg)
+    med = statistics.median(ppks)
+    q1, _, q3 = statistics.quantiles(ppks, n=4)
+    to_rub = lot["price"] / lot["prices"]["usd"] if (lot.get("prices") or {}).get("usd") else None
+    fair = med * s
+    diff = (ppk / med - 1) * 100
+    cheaper = sum(p < ppk for p in ppks)
+    lines = [head, "",
+             f"Соседи по складу (от {kk(max(0, s - SEGMENT_KK))} до {kk(s + SEGMENT_KK)}): **{len(seg)}** лотов",
+             f"Средняя цена (медиана): **${med:.3f} за кк**",
+             f"Для {kk(s)} это **${fair:.0f}**" + (f" (~{rub(fair * to_rub)})" if to_rub else ""),
+             f"Обычно от ${q1:.3f} до ${q3:.3f} за кк",
+             f"Этот лот {'дешевле' if diff < 0 else 'дороже'} медианы на **{abs(diff):.0f}%**, "
+             f"дешевле него {cheaper} из {len(seg)}", "", "Самые выгодные рядом:"]
+    for r in sorted(seg, key=lambda r: r["ppk"])[:3]:
+        lines.append(f"• [{kk(r['stash'])} за ${r['usd']:.0f}]({r['url']}) · ${r['ppk']:.3f} за кк")
+    return {"title": f"📊 Рынок рядом с лотом {kk(s)}", "url": lot["url"], "color": BLUE,
+            "description": "\n".join(lines),
+            "footer": {"text": "Цены объявлений, а не продаж. Без лотов «без почты». Раз в 12 часов"}}
+
+
+def market_report(sellers):
+    rows = market_lots()
+    embeds = []
+    for uid, saved in sellers.items():
+        for lot in sorted(saved.get("lots", {}).values(), key=lambda l: -l["price"]):
+            a = abi_info(lot)
+            if a and a["stash"] > 0 and a["ppk"]:
+                embeds.append(market_embed(lot, uid, rows))
+    return embeds[:10]  # больше 10 карточек в одном сообщении Discord не принимает
+
+
 def check(uid, saved, webhook):
     info = seller_page(uid)
     now = int(time.time())
@@ -494,6 +585,8 @@ def check(uid, saved, webhook):
             if lid in old:
                 if price_changed(old[lid], lot):
                     events.append(lot_embed("💲 Цена изменилась", YELLOW, lot, change(old[lid], lot), seller))
+                if clean(old[lid]["title"]) != clean(lot["title"]):
+                    events.append(desc_embed(old[lid], lot, seller))
                 continue
             back = next((g for g, v in gone.items() if same_lot(v, lot)), None)
             if back:
@@ -552,6 +645,15 @@ def main():
             continue
         if webhook:  # без вебхука ничего не запоминаем, чтобы настоящий запуск начал с чистого листа
             sellers[uid] = result
+    if webhook and time.time() - state.get("market_at", 0) >= MARKET_EVERY - 1800:  # запуски GitHub плавают
+        try:
+            embeds = market_report(sellers)
+            if embeds:
+                send(webhook, {"username": "Рынок FunPay", "embeds": embeds})
+            state["market_at"] = int(time.time())
+            print(f"FunPay: отчёт по рынку, карточек {len(embeds)}")
+        except Exception as e:
+            print("FunPay: рынок не посчитал,", e)
     if webhook:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=2)
