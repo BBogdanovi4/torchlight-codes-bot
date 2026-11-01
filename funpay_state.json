@@ -2,17 +2,6 @@
   "sellers": {
     "5070920": {
       "lots": {
-        "62609990": {
-          "title": "✅ЯЩИК 3х3✅💲300КК-СКЛАД💲170 НАЛИЧКОЙ🔥 ЗВАНИЕ ЛЕГЕНДА 🔥ПОЧТА ВМЕСТЕ С АККАУНТОМ🔥, Arena Breakout Infinite (PC), Продажа",
-          "category": "Аккаунты Arena Breakout",
-          "price": 13915.543282,
-          "url": "https://funpay.com/lots/offer?id=62609990",
-          "prices": {
-            "rub": 13915.543282,
-            "usd": 175.744674,
-            "eur": 156.937596
-          }
-        },
         "59956605": {
           "title": "✅ЯЩИК 3х3✅💲400КК-СКЛАД💲290 НАЛИЧКОЙ🔥 ЗВАНИЕ ЛЕГЕНДА 🔥ПОЧТА ВМЕСТЕ С АККАУНТОМ🔥, Arena Breakout Infinite (PC), Продажа",
           "category": "Аккаунты Arena Breakout",
@@ -25,7 +14,20 @@
           }
         }
       },
-      "gone": {},
+      "gone": {
+        "62609990": {
+          "title": "✅ЯЩИК 3х3✅💲300КК-СКЛАД💲170 НАЛИЧКОЙ🔥 ЗВАНИЕ ЛЕГЕНДА 🔥ПОЧТА ВМЕСТЕ С АККАУНТОМ🔥, Arena Breakout Infinite (PC), Продажа",
+          "category": "Аккаунты Arena Breakout",
+          "price": 13915.543282,
+          "url": "https://funpay.com/lots/offer?id=62609990",
+          "prices": {
+            "rub": 13915.543282,
+            "usd": 175.744674,
+            "eur": 156.937596
+          },
+          "gone_at": 1793550461
+        }
+      },
       "review_count": 15,
       "board_style": "image",
       "board_id": "1559277980511903786"
